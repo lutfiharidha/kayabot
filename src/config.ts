@@ -76,14 +76,14 @@ export const config = {
   },
   rug_check: {
     verbose_log: false,
-    simulation_mode: false,
+    simulation_mode: true,
     // Dangerous
     allow_mint_authority: false, // The mint authority is the address that has permission to mint (create) new tokens. Strongly Advised to set to false.
     allow_not_initialized: false, // This indicates whether the token account is properly set up on the blockchain. Strongly Advised to set to false
     allow_freeze_authority: false, // The freeze authority is the address that can freeze token transfers, effectively locking up funds. Strongly Advised to set to false
     allow_rugged: false,
     // Critical
-    allow_mutable: true,
+    allow_mutable: false,
     block_returning_token_names: true,
     block_returning_token_creators: true,
     block_symbols: ["XXX"],
@@ -92,12 +92,21 @@ export const config = {
     max_alowed_pct_topholders: 50, // Max allowed percentage an individual topholder might hold
     exclude_lp_from_topholders: false, // If true, Liquidity Pools will not be seen as top holders
     // Warning
-    min_total_markets: 1,
-    min_total_lp_providers: 1,
+    min_total_markets: 999,
+    min_total_lp_providers: 999,
     min_total_market_Liquidity: 5000,
     // Misc
     ignore_pump_fun: true,
-    max_score: 0, // Set to 0 to ignore
-    legacy_not_allowed: ["Freeze Authority still enabled"],
+    max_score: 1, // Set to 0 to ignore
+    legacy_not_allowed: [
+      "Low Liquidity",
+      "Single holder ownership",
+      "High holder concentration",
+      "Freeze Authority still enabled",
+      "Large Amount of LP Unlocked",
+      "Low Liquidity",
+      "Copycat token",
+      "Low amount of LP Providers",
+    ],
   },
 };
