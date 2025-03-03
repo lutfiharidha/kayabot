@@ -38,6 +38,8 @@ With customizable parameters, you can tailor the strategy to suit your needs. Th
 
 ### Update Log
 
+- 27-feb-2025:13: Updated the Jupiter API endpoints in .envbackup to reflect new endpoints.
+- 27-feb-2025:13: Updated multiple project dependencies
 - 10-jan-2025:21: Added Dexscreener Tokens API as price source for tracker with option in config.
 - 09-jan-2025:21: Added token wallet balance, an amount mismatch check before trying to sell TP or SL to prevent quoting fees.
 - 09-jan-2025:15: Added .env validator to check if all .env variables are properly set
