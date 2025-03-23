@@ -1,31 +1,25 @@
-This repository contains all the code "as is", following the "Solana Sniper Trading Bot in TypeScript" on YouTube provided by [DigitalBenjamins](https://x.com/digbenjamins).
+This repository contains all the code "as is", following the "Solana PumpSwap Sniper Trading Bot in TypeScript" on YouTube provided by [DigitalBenjamins](https://x.com/digbenjamins).
 
-Part 1: Snipe New Tokens from Raydium LP
+Solana PumpSwap Sniper Trading Bot in TypeScript | Buy fast with JITO and Sell | pump.fun migration
 
-[![Solana Sniper Trading Bot in TypeScript](https://img.youtube.com/vi/vsMbnsdHOIQ/0.jpg)](https://www.youtube.com/watch?v=vsMbnsdHOIQ)
-
-Part 2: Track and sell tokens (SL/TP)
-
-[![Solana Sniper Trading Bot in TypeScript](https://img.youtube.com/vi/4CdXLywg2O8/0.jpg)](https://www.youtube.com/watch?v=4CdXLywg2O8)
-
-You can find the YouTube tutorial here: https://www.youtube.com/watch?v=vsMbnsdHOIQ
+[![Solana Sniper Trading Bot in TypeScript](https://img.youtube.com/vi/eQ8osFo5Df4/0.jpg)](https://www.youtube.com/watch?v=eQ8osFo5Df4)
 
 ## Project Description
 
-The Solana Token Sniper is a Node.js project built with TypeScript, designed to automate the buying and selling of tokens on the Solana blockchain. This script is configured to detect the creation of new liquidity pools and execute token purchases automatically.
+The Solana PumpSwap trading sniper 2025 is a TypeScript (node.js) bot designed to automate the buying of (meme) tokens on the Solana blockchain.
+It is configured to execute trades based on predefined checks and parameters like amount, slipage, rug check and priority. It checks for migration from pumpfun to pumpswap
 
 With customizable parameters, you can tailor the strategy to suit your needs. The primary goal of this project is to educate users about the essential components required to develop a simple token sniper, offering insights into its functionality and implementation!
 
 ### Features
 
-- Token Sniper for Raydium for the Solana blockchain
+- Token Sniper for PumpSwap and Raydium for the Solana blockchain
 - Rug check using a third party service rugcheck.xyz
 - Possibility to skip pump.fun tokens
-- Auto-buy with parameters for amount, slippage and priority
+- Auto-buy with parameters for amount, slippage and priority using JITO
+- Sell automatically using stop loss and Take profit
 - Possibility to set own RPC nodes
-- Track and store tokens in local database
-- Auto-sell feature using Stop Loss and Take Profit
-- Utils: Solana Wallet (keypair) creator
+- Snipe using JITO sniper Sniperoo
 
 ### Prerequisites, Installation and Usage Instructions
 
@@ -39,7 +33,7 @@ With customizable parameters, you can tailor the strategy to suit your needs. Th
 ### Third Party documentation
 
 - [Helius RPC nodes](https://docs.helius.dev)
-- [Jupiter V6 Swap API](https://station.jup.ag/docs/apis/swap-api)
+- [Sniperoo](https://www.sniperoo.app/signup?ref=IZ7ZYZEV)
 - [Rugcheck API](https://api.rugcheck.xyz/swagger/index.html)
 - [Solana](https://solana.com/docs)
 - [Solscan](https://solscan.io)
