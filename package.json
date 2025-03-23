@@ -7,8 +7,8 @@
     "start": "node dist/index.js",
     "start:tracker": "node dist/tracker/index.js",
     "dev": "ts-node src/index.ts",
-    "tracker": "ts-node src/tracker/index.ts",
-    "test": "ts-node src/test.ts",
+    "test:sniperooHandler": "ts-node src/test/sniperooHandler.test.ts",
+    "test:rugCheckHandler": "ts-node src/test/rugCheckHandler.test.ts",
     "clean": "rm -rf dist"
   },
   "keywords": [],
@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@project-serum/anchor": "^0.26.0",
+    "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.95.5",
     "axios": "^1.7.8",
     "bs58": "^6.0.0",
