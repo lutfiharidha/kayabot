@@ -28,13 +28,23 @@ export class SignatureHandler {
 
     try {
       // Fetch transaction with minimal options
-      const tx = await this.connection.getParsedTransaction(signature, {
+      let tx = await this.connection.getParsedTransaction(signature, {
         maxSupportedTransactionVersion: 0,
         commitment: "confirmed",
       });
 
-      // Quick validation
-      if (!tx?.meta) return null;
+      // Quick validation with retry
+      if (!tx?.meta) {
+        // Wait 200ms and try one more time
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        tx = await this.connection.getParsedTransaction(signature, {
+          maxSupportedTransactionVersion: 0,
+          commitment: "confirmed",
+        });
+
+        // If still no meta data, return null
+        if (!tx?.meta) return null;
+      }
 
       // Get token balances - prefer postTokenBalances as they're more likely to contain the new token
       const tokenBalances = tx.meta.postTokenBalances || tx.meta.preTokenBalances;

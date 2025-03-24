@@ -1,8 +1,8 @@
 import { exec } from "child_process";
 import { config } from "../config";
 
-export function playSound() {
-  const text = config.token_buy.play_sound_text;
+export function playSound(speech?: string) {
+  const text = speech ? speech : config.token_buy.play_sound_text;
   const command = `powershell -Command "(New-Object -com SAPI.SpVoice).speak('${text}')"`;
   exec(command, (error, stdout, stderr) => {
     if (error) {

@@ -23,6 +23,9 @@ const SELL_ENABLED = config.token_sell.enabled || false;
 const SELL_STOP_LOSS = config.token_sell.stop_loss_percent || 15;
 const SELL_TAKE_PROFIT = config.token_sell.take_profit_percent || 50;
 
+// current handled mint
+let CURRENT_MINT: string = "";
+
 // Function used to handle the transaction once a new pool creation is found
 async function processTransaction(signature: string): Promise<void> {
   console.log("================================================================");
@@ -40,6 +43,16 @@ async function processTransaction(signature: string): Promise<void> {
     return;
   }
   console.log("✅ [Process Transaction] Token CA extracted successfully");
+
+  /**
+   * Check if the mint address is the same as the current one to prevent failed logs from spam buying
+   */
+  if (CURRENT_MINT === returnedMint) {
+    console.log("⏭️ [Process Transaction] Skipping duplicate mint to prevent mint spamming");
+    console.log("🔎 [Process Transaction] Looking for new Liquidity Pools again\n");
+    return;
+  }
+  CURRENT_MINT = returnedMint;
 
   /**
    * Perform checks based on selected level of rug check
@@ -90,6 +103,7 @@ async function processTransaction(signature: string): Promise<void> {
     console.log("🔫 [Process Transaction] Sniping token using Sniperoo...");
     const result = await buyToken(returnedMint, BUY_AMOUNT, SELL_ENABLED, SELL_TAKE_PROFIT, SELL_STOP_LOSS);
     if (!result) {
+      CURRENT_MINT = ""; // Reset the current mint
       console.log("❌ [Process Transaction] Token not swapped. Sniperoo failed.");
       console.log("🔎 [Process Transaction] Looking for new Liquidity Pools again\n");
       return;
@@ -101,7 +115,10 @@ async function processTransaction(signature: string): Promise<void> {
   /**
    * Check if Simopulation Mode is enabled in order to output the warning
    */
-  if (SIM_MODE) console.log("🧻 [Process Transaction] Token not swapped! Simulation Mode turned on.");
+  if (SIM_MODE) {
+    console.log("🧻 [Process Transaction] Token not swapped! Simulation Mode turned on.");
+    if (PLAY_SOUND) playSound("Token found in simulation mode");
+  }
 
   /**
    * Output token mint address
