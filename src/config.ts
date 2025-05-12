@@ -1,28 +1,28 @@
 export const config = {
-  liquidity_pool: [
-    {
-      enabled: true,
-      id: "pump1",
-      name: "pumpswap",
-      program: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
-      instruction: "Program log: Instruction: CreatePool",
-    },
-    {
-      enabled: false,
-      id: "rad1",
-      name: "Raydium",
-      program: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-      instruction: "Program log: initialize2: InitializeInstruction2",
-    },
-  ],
+  telegram: {
+    enabled: true, // If set to true, the bot will send messages to telegram
+    token: "7248739631:AAHpDkY8-4GHp0fiz9kuivgh7kqdK5fND8Y", // Telegram bot token
+  },
+  pumpfun: {
+    id: "pump1",
+    name: "pumpswap",
+    program: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+    instruction: "Program log: Instruction: CreatePool",
+  },
+  raydium: {
+    id: "rad1",
+    name: "Raydium",
+    program: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+    instruction: "Program log: initialize2: InitializeInstruction2",
+  },
   concurrent_transactions: 1, // Number of simultaneous transactions
   wsol_pc_mint: "So11111111111111111111111111111111111111112",
   db: {
-    pathname: "src/tracker/tokens.db", // Sqlite Database location
+    pathname: "src/db/sniper.db", // Sqlite Database location
   },
   token_buy: {
     provider: "sniperoo",
-    sol_amount: 0.1, // Amount of SOL to spend
+    sol_amount: 0.005, // Amount of SOL to spend
     play_sound: true, // Works only on windows
     play_sound_text: "Order Filled!",
   },
@@ -33,14 +33,14 @@ export const config = {
   },
   checks: {
     simulation_mode: false,
-    mode: "full", // snipe=Minimal Checks, full=Full Checks based on Rug Check, none=No Checks
+    mode: "snipe", // snipe=Minimal Checks, full=Full Checks based on Rug Check, none=No Checks
     verbose_logs: false,
     settings: {
       // Dangerous (Checked in snipe mode)
       allow_mint_authority: false, // The mint authority is the address that has permission to mint (create) new tokens. Strongly Advised to set to false.
       allow_freeze_authority: false, // The freeze authority is the address that can freeze token transfers, effectively locking up funds. Strongly Advised to set to false
       // Critical
-      max_alowed_pct_topholders: 50, // Max allowed percentage an individual topholder might hold
+      max_alowed_pct_topholders: 20, // Max allowed percentage an individual topholder might hold
       exclude_lp_from_topholders: true, // If true, Liquidity Pools will not be seen as top holders
       block_returning_token_names: true,
       block_returning_token_creators: true,
@@ -51,12 +51,12 @@ export const config = {
       block_symbols: ["XXX"],
       block_names: ["XXX"],
       // Warning
-      min_total_lp_providers: 999,
-      min_total_markets: 999,
-      min_total_market_Liquidity: 5000,
+      min_total_lp_providers: 1,
+      min_total_markets: 1,
+      min_total_market_Liquidity: 10000,
       // Misc
-      ignore_ends_with_pump: true,
-      max_score: 1, // Set to 0 to ignore
+      ignore_ends_with_pump: false,
+      max_score: 0, // Set to 0 to ignore
     },
   },
   axios: {

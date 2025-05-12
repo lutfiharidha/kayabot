@@ -9,6 +9,7 @@ export async function createTableNewTokens(database: any): Promise<boolean> {
     await database.exec(`
     CREATE TABLE IF NOT EXISTS tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
       time INTEGER NOT NULL,
       name TEXT NOT NULL,
       mint TEXT NOT NULL,
@@ -21,7 +22,7 @@ export async function createTableNewTokens(database: any): Promise<boolean> {
   }
 }
 
-export async function insertNewToken(newToken: NewTokenRecord) {
+export async function insertNewToken(userId: number, newToken: NewTokenRecord) {
   const db = await open({
     filename: config.db.pathname,
     driver: sqlite3.Database,
@@ -39,17 +40,17 @@ export async function insertNewToken(newToken: NewTokenRecord) {
 
     await db.run(
       `
-    INSERT INTO tokens (time, name, mint, creator)
-    VALUES (?, ?, ?, ?);
+    INSERT INTO tokens (user_id, time, name, mint, creator)
+    VALUES (?, ?, ?, ?, ?);
   `,
-      [time, name, mint, creator]
+      [userId, time, name, mint, creator]
     );
 
     await db.close();
   }
 }
 
-export async function selectTokenByNameAndCreator(name: string, creator: string): Promise<NewTokenRecord[]> {
+export async function selectTokenByNameAndCreator(userId: number, name: string, creator: string): Promise<NewTokenRecord[]> {
   // Open the database
   const db = await open({
     filename: config.db.pathname,
@@ -68,9 +69,9 @@ export async function selectTokenByNameAndCreator(name: string, creator: string)
     `
     SELECT * 
     FROM tokens
-    WHERE name = ? OR creator = ?;
+    WHERE (name = ? OR creator = ?) AND user_id = ?;
   `,
-    [name, creator]
+    [name, creator, userId]
   );
 
   // Close the database

@@ -2,96 +2,107 @@ import WebSocket from "ws"; // Node.js websocket library
 import { config } from "./config"; // Configuration parameters for our bot
 import { validateEnv } from "./utils/env-validator";
 import { WebSocketManager, ConnectionState, WebSocketRequest } from "./utils/managers/websocketManager";
-import { getMintFromSignature } from "./utils/handlers/signatureHandler";
-import { getTokenAuthorities, TokenAuthorityStatus } from "./utils/handlers/tokenHandler";
+import { createSignatureHandler } from "./utils/handlers/signatureHandler";
+import { createTokenCheckManager } from "./utils/handlers/tokenHandler";
 import { buyToken } from "./utils/handlers/sniperooHandler";
 import { getRugCheckConfirmed } from "./utils/handlers/rugCheckHandler";
 import { playSound } from "./utils/notification";
+import { handleCommands, userState } from './bot/handlers';
+import { UserContext } from "./utils/handlers/UserContext";
+import { TelegramManager } from "./utils/handlers/telegram";
 
 // Regional Variables
-let activeTransactions = 0;
+TelegramManager.init(config.telegram.token); // WAJIB dipanggil 1x saat startup
 const MAX_CONCURRENT = config.concurrent_transactions;
-const CHECK_MODE = config.checks.mode || "full";
 const BUY_PROVIDER = config.token_buy.provider;
-const BUY_AMOUNT = config.token_buy.sol_amount;
-const SUBSCRIBE_LP = config.liquidity_pool;
 const SIM_MODE = config.checks.simulation_mode || false;
 const PLAY_SOUND = config.token_buy.play_sound || false;
+const bot = TelegramManager.getInstance().getBot();
+type SubscriptionLP = {
+  enabled: boolean;
+  id: string;
+  name: string;
+  program: string;
+  instruction: string;
+};
 
 // Sell Options
-const SELL_ENABLED = config.token_sell.enabled || false;
-const SELL_STOP_LOSS = config.token_sell.stop_loss_percent || 15;
-const SELL_TAKE_PROFIT = config.token_sell.take_profit_percent || 50;
 
 // current handled mint
-let CURRENT_MINT: string = "";
 
 // Function used to handle the transaction once a new pool creation is found
-async function processTransaction(signature: string): Promise<void> {
-  console.log("================================================================");
-  console.log("💦 [Process Transaction] New Liquidity Pool signature found");
-  console.log("⌛ [Process Transaction] Extracting token CA from signature...");
-  console.log("https://solscan.io/tx/" + signature);
+async function processTransaction(userCtx: UserContext, signature: string): Promise<void> {
+  bot.sendMessage(userCtx.userID, `
+🔎 [Process Transaction] New Liquidity Pool found`);
 
   /**
    * Extract the token CA from the transaction signature
    */
-  const returnedMint = await getMintFromSignature(signature);
+  const signatureHandler = createSignatureHandler(userCtx);
+  const returnedMint = await signatureHandler.getMintFromSignature(signature);
   if (!returnedMint) {
-    console.log("❌ [Process Transaction] No valid token CA could be extracted");
-    console.log("🔎 [Process Transaction] Looking for new Liquidity Pools again\n");
+    bot.sendMessage(userCtx.userID, `
+❌ [Process Transaction] No valid token CA could be extracted
+🔎 [Process Transaction] Looking for new Liquidity Pools again`);
     return;
   }
-  console.log("✅ [Process Transaction] Token CA extracted successfully");
 
   /**
    * Check if the mint address is the same as the current one to prevent failed logs from spam buying
    */
-  if (CURRENT_MINT === returnedMint) {
-    console.log("⏭️ [Process Transaction] Skipping duplicate mint to prevent mint spamming");
-    console.log("🔎 [Process Transaction] Looking for new Liquidity Pools again\n");
+  if (userCtx.iscurrentMint === returnedMint) {
+    bot.sendMessage(userCtx.userID, `
+❌ [Process Transaction] Skipping duplicate mint to prevent mint spamming
+🔎 [Process Transaction] Looking for new Liquidity Pools again`);
     return;
   }
-  CURRENT_MINT = returnedMint;
+  userCtx.iscurrentMint = returnedMint;
 
   /**
    * Perform checks based on selected level of rug check
    */
+  const CHECK_MODE = userCtx.mode
   if (CHECK_MODE === "snipe") {
-    console.log(`🔍 [Process Transaction] Performing ${CHECK_MODE} check`);
-    const tokenAuthorityStatus: TokenAuthorityStatus = await getTokenAuthorities(returnedMint);
+    bot.sendMessage(userCtx.userID, `
+🔍 [Process Transaction] Performing ${CHECK_MODE} check
+👽 GMGN: https://gmgn.ai/sol/token/${returnedMint}`);
+    const tokenCheck = createTokenCheckManager(userCtx);
+    const tokenAuthorityStatus = await tokenCheck.getTokenAuthorities(returnedMint);
     if (!tokenAuthorityStatus.isSecure) {
       /**
        * Token is not secure, check if we should skip based on preferences
        */
-      const allowMintAuthority = config.checks.settings.allow_mint_authority || false;
-      const allowFreezeAuthority = config.checks.settings.allow_freeze_authority || false;
+      const allowMintAuthority = userCtx.mintAuthority || false;
+      const allowFreezeAuthority = userCtx.freezeAuthority || false;
       if (!allowMintAuthority && tokenAuthorityStatus.hasMintAuthority) {
-        console.log("❌ [Process Transaction] Token has mint authority, skipping...");
-        console.log("🔎 [Process Transaction] Looking for new Liquidity Pools again\n");
+        bot.sendMessage(userCtx.userID, `
+❌ [Process Transaction] Token has mint authority, skipping...
+🔎 [Process Transaction] Looking for new Liquidity Pools again`);
         return;
       }
       if (!allowFreezeAuthority && tokenAuthorityStatus.hasFreezeAuthority) {
-        console.log("❌ [Process Transaction] Token has freeze authority, skipping...");
-        console.log("🔎 [Process Transaction] Looking for new Liquidity Pools again\n");
+        bot.sendMessage(userCtx.userID, `
+❌ [Process Transaction] Token has freeze authority, skipping...
+🔎 [Process Transaction] Looking for new Liquidity Pools again`);
         return;
       }
     }
-    console.log("✅ [Process Transaction] Snipe check passed successfully");
   } else if (CHECK_MODE === "full") {
     /**
      *  Perform full check
      */
     if (returnedMint.trim().toLowerCase().endsWith("pump") && config.checks.settings.ignore_ends_with_pump) {
-      console.log("❌ [Process Transaction] Token ends with pump, skipping...");
-      console.log("🔎 [Process Transaction] Looking for new Liquidity Pools again\n");
+      bot.sendMessage(userCtx.userID, `
+❌ [Process Transaction] Token ends with pump, skipping...
+🔎 [Process Transaction] Looking for new Liquidity Pools again`);
       return;
     }
     // Check rug check
-    const isRugCheckPassed = await getRugCheckConfirmed(returnedMint);
+    const isRugCheckPassed = await getRugCheckConfirmed(userCtx, returnedMint);
     if (!isRugCheckPassed) {
-      console.log("❌ [Process Transaction] Full rug check not passed, skipping...");
-      console.log("🔎 [Process Transaction] Looking for new Liquidity Pools again\n");
+      bot.sendMessage(userCtx.userID, `
+❌ [Process Transaction] Token not swapped. Rug check failed.
+🔎 [Process Transaction] Looking for new Liquidity Pools again`);
       return;
     }
   }
@@ -99,45 +110,76 @@ async function processTransaction(signature: string): Promise<void> {
   /**
    * Perform Swap Transaction
    */
+
+  const BUY_AMOUNT = userCtx.buyAmount;
+  const SELL_ENABLED = userCtx.sellEnabled;
+  const SELL_STOP_LOSS = userCtx.stopLoss;
+  const SELL_TAKE_PROFIT = userCtx.takeProfit;
+
   if (BUY_PROVIDER === "sniperoo" && !SIM_MODE) {
-    console.log("🔫 [Process Transaction] Sniping token using Sniperoo...");
-    const result = await buyToken(returnedMint, BUY_AMOUNT, SELL_ENABLED, SELL_TAKE_PROFIT, SELL_STOP_LOSS);
+    const result = await buyToken(userCtx, returnedMint, Number(BUY_AMOUNT), SELL_ENABLED, Number(SELL_TAKE_PROFIT), Number(SELL_STOP_LOSS));
     if (!result) {
-      CURRENT_MINT = ""; // Reset the current mint
-      console.log("❌ [Process Transaction] Token not swapped. Sniperoo failed.");
-      console.log("🔎 [Process Transaction] Looking for new Liquidity Pools again\n");
+      userCtx.iscurrentMint = ""; // Reset the current mint
+      bot.sendMessage(userCtx.userID, `
+❌ [Process Transaction] Token not swapped. Sniperoo failed.
+🔎 [Process Transaction] Looking for new Liquidity Pools again`);
       return;
     }
-    if (PLAY_SOUND) playSound();
-    console.log("✅ [Process Transaction] Token swapped successfully using Sniperoo");
+    bot.sendMessage(userCtx.userID, `
+<b>Token swapped successfully</b>
+
+<b>Mint Address:</b> ${returnedMint}
+<b>Token:</b> https://gmgn.ai/sol/token/${returnedMint}
+<b>Token Amount:</b> ${BUY_AMOUNT} SOL
+<b>Sell Enabled:</b> ${SELL_ENABLED}
+<b>Stop Loss:</b> ${SELL_STOP_LOSS}
+<b>Take Profit:</b> ${SELL_TAKE_PROFIT}`);
+    bot.sendMessage(userCtx.userID, "✅ [Process Transaction] Token swapped successfully! ");
   }
 
   /**
    * Check if Simopulation Mode is enabled in order to output the warning
    */
-  if (SIM_MODE) {
-    console.log("🧻 [Process Transaction] Token not swapped! Simulation Mode turned on.");
-    if (PLAY_SOUND) playSound("Token found in simulation mode");
-  }
+  // if (SIM_MODE) {
+  //   console.log("🧻 [Process Transaction] Token not swapped! Simulation Mode turned on.");
+  //   if (PLAY_SOUND) playSound("Token found in simulation mode");
+  // }
 
   /**
    * Output token mint address
    */
-  console.log("👽 GMGN: https://gmgn.ai/sol/token/" + returnedMint);
-  console.log("😈 BullX: https://neo.bullx.io/terminal?chainId=1399811149&address=" + returnedMint);
 }
 
 // Main function to start the application
-async function main(): Promise<void> {
-  console.clear();
-  console.log("🚀 Starting Solana Token Sniper...");
-
+export async function continueProgram(userctx: UserContext): Promise<void> {
   // Load environment variables from the .env file
-  const env = validateEnv();
+  const SUBSCRIBE_LP: SubscriptionLP[] = [];
+
+  if (userctx.pumpfun) {
+    SUBSCRIBE_LP.push({
+      enabled: true,
+      id: config.pumpfun.id,
+      name: config.pumpfun.name,
+      program: config.pumpfun.program,
+      instruction: config.pumpfun.instruction,
+    });
+  }
+
+  if (userctx.raydium) {
+    SUBSCRIBE_LP.push({
+      enabled: true,
+      id: config.raydium.id,
+      name: config.raydium.name,
+      program: config.raydium.program,
+      instruction: config.raydium.instruction,
+    });
+  }
+
 
   // Create WebSocket manager
+
   const wsManager = new WebSocketManager({
-    url: env.HELIUS_WSS_URI,
+    url: userctx.wsUrl,
     initialBackoff: 1000,
     maxBackoff: 30000,
     maxRetries: Infinity,
@@ -168,6 +210,7 @@ async function main(): Promise<void> {
   });
 
   wsManager.on("message", async (data: WebSocket.Data) => {
+    if (!userctx.isRunning) return;
     try {
       const jsonString = data.toString(); // Convert data to a string
       const parsedData = JSON.parse(jsonString); // Parse the JSON string
@@ -198,21 +241,21 @@ async function main(): Promise<void> {
       if (!containsCreate || typeof signature !== "string") return;
 
       // Verify if we have reached the max concurrent transactions
-      if (activeTransactions >= MAX_CONCURRENT) {
+      if (userctx.isActiveTransactions >= MAX_CONCURRENT) {
         console.log("⏳ Max concurrent transactions reached, skipping...");
         return;
       }
 
       // Add additional concurrent transaction
-      activeTransactions++;
+      userctx.isActiveTransactions++;
 
       // Process transaction asynchronously
-      processTransaction(signature)
+      processTransaction(userctx, signature)
         .catch((error) => {
           console.error("Error processing transaction:", error);
         })
         .finally(() => {
-          activeTransactions--;
+          userctx.isActiveTransactions--;
         });
     } catch (error) {
       console.error("💥 Error processing message:", {
@@ -228,9 +271,9 @@ async function main(): Promise<void> {
 
   wsManager.on("state_change", (state: ConnectionState) => {
     if (state === ConnectionState.RECONNECTING) {
-      console.log("📴 WebSocket connection lost, attempting to reconnect...");
+      bot.sendMessage(userctx.userID, `📴 WebSocket connection lost, attempting to reconnect...`);
     } else if (state === ConnectionState.CONNECTED) {
-      console.log("🔄 WebSocket reconnected successfully.");
+      bot.sendMessage(userctx.userID, `🔄 WebSocket connected successfully.`);
     }
   });
 
@@ -239,20 +282,35 @@ async function main(): Promise<void> {
 
   // Handle application shutdown
   process.on("SIGINT", () => {
+    bot.sendMessage('732587267', `Bot stopped`);
     console.log("\n🛑 Shutting down...");
     wsManager.disconnect();
     process.exit(0);
   });
 
   process.on("SIGTERM", () => {
+    bot.sendMessage('732587267', `Bot stopped`);
     console.log("\n🛑 Shutting down...");
     wsManager.disconnect();
     process.exit(0);
   });
 }
 
+async function main(): Promise<void> {
+  console.log("🚀 Starting Solana Token Sniper...");
+
+  const env = validateEnv(); // misalnya pakai dotenv
+  if (env.TELEGRAM_BOT) {
+    handleCommands(bot); // <- ini yang menangani semua /cservice, /cbuy, dll
+  }
+}
+
+// main().catch(console.error);
+
+
 // Start the application
 main().catch((err) => {
+  bot.sendMessage('732587267', `Bot error: ${err}`);
   console.error("Fatal error:", err);
   process.exit(1);
 });

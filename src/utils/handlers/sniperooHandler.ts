@@ -1,16 +1,15 @@
 import axios from "axios";
 import { validateEnv } from "../env-validator";
-
+import { UserContext } from "./UserContext";
+import { TelegramManager } from "./telegram";
 /**
  * Buys a token using the Sniperoo API
  * @param tokenAddress The token's mint address
  * @param inputAmount Amount of SOL to spend
  * @returns Boolean indicating if the purchase was successful
  */
-export async function buyToken(tokenAddress: string, inputAmount: number, sell: boolean, tp: number, sl: number): Promise<boolean> {
+export async function buyToken(userCtx: UserContext, tokenAddress: string, inputAmount: number, sell: boolean, tp: number, sl: number): Promise<boolean> {
   try {
-    const env = validateEnv();
-
     // Validate inputs
     if (!tokenAddress || typeof tokenAddress !== "string" || tokenAddress.trim() === "") {
       return false;
@@ -26,7 +25,7 @@ export async function buyToken(tokenAddress: string, inputAmount: number, sell: 
 
     // Prepare request body
     const requestBody = {
-      walletAddresses: [env.SNIPEROO_PUBKEY],
+      walletAddresses: [userCtx.wallet],
       tokenAddress: tokenAddress,
       inputAmount: inputAmount,
       autoSell: {
@@ -42,7 +41,7 @@ export async function buyToken(tokenAddress: string, inputAmount: number, sell: 
     // Make API request using axios
     const response = await axios.post("https://api.sniperoo.app/trading/buy-token?toastFrontendId=0", requestBody, {
       headers: {
-        Authorization: `Bearer ${env.SNIPEROO_API_KEY}`,
+        Authorization: `Bearer ${userCtx.apiKey}`,
         "Content-Type": "application/json",
       },
     });
@@ -53,9 +52,9 @@ export async function buyToken(tokenAddress: string, inputAmount: number, sell: 
   } catch (error) {
     // Handle axios errors
     if (axios.isAxiosError(error)) {
-      console.error(`Sniperoo API error (${error.response?.status || "unknown"}):`, error.response?.data || error.message);
+      await TelegramManager.getInstance().sendMessage(userCtx.userID, `Error buying token: ${error.response?.data.message || "Unknown error"}`,);
     } else {
-      console.error("Error buying token:", error instanceof Error ? error.message : "Unknown error");
+      await TelegramManager.getInstance().sendMessage(userCtx.userID, `Error buying token:", ${error instanceof Error ? error.message : "Unknown error"}`);
     }
     return false;
   }

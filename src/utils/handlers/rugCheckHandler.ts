@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import { config } from "../../config";
 import { RugResponseExtended, NewTokenRecord } from "../../types";
 import { insertNewToken, selectTokenByNameAndCreator } from "../../tracker/db";
+import { UserContext } from "./UserContext";
 
 // Load environment variables from the .env file
 dotenv.config();
@@ -12,7 +13,7 @@ dotenv.config();
  * @param tokenMint The token's mint address
  * @returns Promise<boolean> indicating if the token passes all checks
  */
-export async function getRugCheckConfirmed(tokenMint: string): Promise<boolean> {
+export async function getRugCheckConfirmed(userCtx: UserContext, tokenMint: string): Promise<boolean> {
   try {
     const rugResponse = await axios.get<RugResponseExtended>(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, {
       timeout: config.axios.get_timeout,
@@ -67,7 +68,7 @@ export async function getRugCheckConfirmed(tokenMint: string): Promise<boolean> 
     // Set conditions for token validation
     const conditions = [
       {
-        check: !rugCheckSettings.allow_mint_authority && mintAuthority !== null,
+        check: !userCtx.mintAuthority && mintAuthority !== null,
         message: "🚫 Mint authority should be null",
       },
       {
@@ -75,7 +76,7 @@ export async function getRugCheckConfirmed(tokenMint: string): Promise<boolean> 
         message: "🚫 Token is not initialized",
       },
       {
-        check: !rugCheckSettings.allow_freeze_authority && freezeAuthority !== null,
+        check: !userCtx.freezeAuthority && freezeAuthority !== null,
         message: "🚫 Freeze authority should be null",
       },
       {
@@ -83,23 +84,23 @@ export async function getRugCheckConfirmed(tokenMint: string): Promise<boolean> 
         message: "🚫 Mutable should be false",
       },
       {
-        check: !rugCheckSettings.allow_insider_topholders && topHolders.some((holder) => holder.insider),
+        check: !userCtx.allowInsiderTopHolders && topHolders.some((holder) => holder.insider),
         message: "🚫 Insider accounts should not be part of the top holders",
       },
       {
-        check: topHolders.some((holder) => holder.pct > rugCheckSettings.max_alowed_pct_topholders),
+        check: topHolders.some((holder) => holder.pct > userCtx.percentageTopHolders),
         message: "🚫 An individual top holder cannot hold more than the allowed percentage of the total supply",
       },
       {
-        check: totalLPProviders < rugCheckSettings.min_total_lp_providers,
+        check: totalLPProviders < userCtx.totalLpProviders,
         message: "🚫 Not enough LP Providers.",
       },
       {
-        check: marketsLength < rugCheckSettings.min_total_markets,
+        check: marketsLength < userCtx.totalMarkets,
         message: "🚫 Not enough Markets.",
       },
       {
-        check: totalMarketLiquidity < rugCheckSettings.min_total_market_Liquidity,
+        check: totalMarketLiquidity < userCtx.totalMarketLiquidity,
         message: "🚫 Not enough Market Liquidity.",
       },
       {
@@ -115,7 +116,7 @@ export async function getRugCheckConfirmed(tokenMint: string): Promise<boolean> 
         message: "🚫 Name is blocked",
       },
       {
-        check: rugScore > rugCheckSettings.max_score && rugCheckSettings.max_score !== 0,
+        check: rugScore > userCtx.score && userCtx.score !== 0,
         message: "🚫 Rug score too high.",
       },
       {
@@ -128,7 +129,7 @@ export async function getRugCheckConfirmed(tokenMint: string): Promise<boolean> 
     if (rugCheckSettings.block_returning_token_names || rugCheckSettings.block_returning_token_creators) {
       try {
         // Get duplicates based on token name and creator
-        const duplicate = await selectTokenByNameAndCreator(tokenName, tokenCreator);
+        const duplicate = await selectTokenByNameAndCreator(userCtx.userID, tokenName, tokenCreator);
 
         // Verify if duplicate token or creator was returned
         if (duplicate.length !== 0) {
@@ -156,7 +157,7 @@ export async function getRugCheckConfirmed(tokenMint: string): Promise<boolean> 
     };
 
     try {
-      await insertNewToken(newToken);
+      await insertNewToken(userCtx.userID, newToken);
     } catch (err) {
       if (rugCheckSettings.block_returning_token_names || rugCheckSettings.block_returning_token_creators) {
         console.error("⛔ Unable to store new token for tracking duplicate tokens:", err);

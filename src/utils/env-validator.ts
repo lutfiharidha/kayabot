@@ -7,6 +7,8 @@ export interface EnvConfig {
   HELIUS_WSS_URI: string;
   SNIPEROO_API_KEY: string;
   SNIPEROO_PUBKEY: string;
+  TELEGRAM_KEY: string;
+  TELEGRAM_BOT: boolean
 }
 
 export function validateEnv(): EnvConfig {
@@ -28,12 +30,12 @@ export function validateEnv(): EnvConfig {
     if (value && url.protocol !== protocol) {
       throw new Error(`🚫 ${envVar} must start with ${protocol}`);
     }
-    if (checkApiKey && value) {
-      const apiKey = url.searchParams.get("api-key");
-      if (!apiKey || apiKey.trim() === "") {
-        throw new Error(`🚫 The 'api-key' parameter is missing or empty in the URL: ${value}`);
-      }
-    }
+    // if (checkApiKey && value) {
+    //   const apiKey = url.searchParams.get("api-key");
+    //   if (!apiKey || apiKey.trim() === "") {
+    //     throw new Error(`🚫 The 'api-key' parameter is missing or empty in the URL: ${value}`);
+    //   }
+    // }
   };
 
   validateUrl("HELIUS_HTTPS_URI", "https:", true);
@@ -44,5 +46,7 @@ export function validateEnv(): EnvConfig {
     HELIUS_WSS_URI: process.env.HELIUS_WSS_URI!,
     SNIPEROO_API_KEY: process.env.SNIPEROO_API_KEY!,
     SNIPEROO_PUBKEY: process.env.SNIPEROO_PUBKEY!,
+    TELEGRAM_KEY: process.env.TELEGRAM_KEY!,
+    TELEGRAM_BOT: process.env.TELEGRAM_BOT === "true",
   };
 }
