@@ -1,8 +1,8 @@
 import TelegramBot from 'node-telegram-bot-api';
 import db from './db';
 import { continueProgram } from "../index";
-import { get } from 'http';
 import { UserContext } from "../utils/handlers/UserContext";
+import { getJakartaTime, getJakartaTime1month, getJakartaTime1year, getStartOfDayJakarta } from "../utils/handlers/helper";
 
 export const userKeyState = new Map<number, {
   api_key: string;
@@ -104,21 +104,125 @@ function getRandomChar(): string {
 }
 
 export function handleCommands(bot: TelegramBot) {
+  bot.onText(/\/euser(?:\s+(.+))?/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const senderId = msg.from!.id;
+
+    if (senderId !== 732587267) {
+      await bot.sendMessage(chatId, "🚫 Are you sure you're an ADMIN?!");
+      await bot.sendMessage(732587267, `Sir, <a href="https://t.me/${msg.chat.username}"><b>${msg.chat.username}</b></a> is trying to access the admin command! 
+
+Command: <b>${msg.text}</b>`, {
+        parse_mode: 'HTML',
+      });
+      return;
+    }
+
+    const query = match?.[1]?.trim(); // bisa ID atau username
+
+    if (!query) {
+      await bot.sendMessage(chatId, "⚠️ Gunakan format: /euser <username>");
+      return;
+    }
+    try {
+      const status = await toggleUserStatus(query);
+      if (status !== null) {
+        await bot.sendMessage(chatId, `${status === 1 ? '✅' : '❌'} User ${query} is now ${status === 1 ? "Active" : "Not Active"}!`);
+      } else {
+        await bot.sendMessage(chatId, `🚫 User ${query} not updated!`);
+      }
+    } catch (err) {
+      await bot.sendMessage(chatId, `🚫 Error: ${err}`);
+    }
+
+  });
+
+  bot.onText(/\/luser/, async (msg) => {
+    const chatId = msg.chat.id;
+    const senderId = msg.from!.id;
+
+    if (senderId !== 732587267) {
+      await bot.sendMessage(chatId, "🚫 Are you sure you're an ADMIN?!");
+      await bot.sendMessage(732587267, `Sir, <a href="https://t.me/${msg.chat.username}"><b>${msg.chat.username}</b></a> is trying to access the admin command! 
+
+Command: <b>${msg.text}</b>`, {
+        parse_mode: 'HTML',
+      });
+      return;
+    }
+
+    try {
+      const user = await getUserList();
+      if (user !== null) {
+        await bot.sendMessage(chatId, `User List
+${user.map((u) => `\n- <b>@${u.username} (${u.user_id})</b>
+Status: ${u.status ? " ✅ Active" : "❌ Not Active"}
+Created At: ${u.created_at}
+Updated At: ${u.updated_at}
+`).join('')}`, {
+          parse_mode: 'HTML',
+        });
+      } else {
+        await bot.sendMessage(chatId, `🚫 There's no user bos`);
+      }
+    } catch (err) {
+      await bot.sendMessage(chatId, `🚫 Error: ${err}`);
+    }
+
+  });
+
+  bot.onText(/\/guser(?:\s+(.+))?/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const senderId = msg.from!.id;
+
+    if (senderId !== 732587267) {
+      await bot.sendMessage(chatId, "🚫 Are you sure you're an ADMIN?!");
+      await bot.sendMessage(732587267, `Sir, <a href="https://t.me/${msg.chat.username}"><b>${msg.chat.username}</b></a> is trying to access the admin command! 
+
+Command: <b>${msg.text}</b>`, {
+        parse_mode: 'HTML',
+      });
+      return;
+    }
+
+    const query = match?.[1]?.trim();
+
+    if (!query) {
+      await bot.sendMessage(chatId, "⚠️ Gunakan format: /euser <username>");
+      return;
+    }
+    try {
+      const user = await getUserbyUsername(query);
+      if (user !== null) {
+        await bot.sendMessage(chatId, `<b>@${user.username} (${user.user_id})</b>
+Status: ${user.status ? "Active" : "Not Active"}
+Created At: ${user.created_at}
+Updated At: ${user.updated_at}
+`, { parse_mode: 'HTML' });
+      } else {
+        await bot.sendMessage(chatId, `🚫 User ${query} not updated!`);
+      }
+    } catch (err) {
+      await bot.sendMessage(chatId, `🚫 Error: ${err}`);
+    }
+
+  });
+
   bot.onText(/\/start/, async (msg) => {
     const data = {
       user_id: msg.from!.id,
       name: msg.from!.first_name,
       username: msg.from!.username,
       api_key: "firekey" + getRandomChar(),
-      status: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      status: false,
+      created_at: getJakartaTime(),
+      updated_at: getJakartaTime1month(),
     };
     saveUser(msg.from!.id, data);
     const message = await bot.sendMessage(msg.chat.id, `
       <b>👋 Hello ${data.username}, Welcome!</b>
 
-      <b>Please Request your api key to the <a href="https://t.me/lutfiharidha">ADMIN</a></b>
+      <b>Please Request your api key to the <a href="https://t.me/lutfiharidha">DEVELOPER</a></b>
 
       <b>TOOLS:</b>
       <b><a href="https://www.helius.dev/">Helius</a> or <a href="https://www.quicknode.com/">Quicknode</a></b>
@@ -131,8 +235,8 @@ export function handleCommands(bot: TelegramBot) {
   bot.onText(/\/cservice/, async (msg) => {
     const userId = msg.from!.id;
     const chatId = msg.chat.id;
-    if (validateToken(userId) === false) {
-      await bot.sendMessage(chatId, '🚫 API KEY is not valid. please contact admin');
+    if (await validateToken(userId) === false) {
+      await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
       return;
     }
     const userData = await getUserData(userId);
@@ -173,8 +277,8 @@ export function handleCommands(bot: TelegramBot) {
   bot.onText(/\/cbuy/, async (msg) => {
     const userId = msg.from!.id;
     const chatId = msg.chat.id;
-    if (validateToken(userId) === false) {
-      await bot.sendMessage(chatId, '🚫 API KEY is not valid. please contact admin');
+    if (await validateToken(userId) === false) {
+      await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
       return;
     }
     const userData = await getUserData(userId);
@@ -220,8 +324,8 @@ export function handleCommands(bot: TelegramBot) {
   bot.onText(/\/csell/, async (msg) => {
     const userId = msg.from!.id;
     const chatId = msg.chat.id;
-    if (validateToken(userId) === false) {
-      await bot.sendMessage(chatId, '🚫 API KEY is not valid. please contact admin');
+    if (await validateToken(userId) === false) {
+      await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
       return;
     }
     const userData = await getUserData(userId);
@@ -265,8 +369,8 @@ export function handleCommands(bot: TelegramBot) {
   bot.onText(/\/crug/, async (msg) => {
     const userId = msg.from!.id;
     const chatId = msg.chat.id;
-    if (validateToken(userId) === false) {
-      await bot.sendMessage(chatId, '🚫 API KEY is not valid. please contact admin');
+    if (await validateToken(userId) === false) {
+      await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
       return;
     }
     const userData = await getUserData(userId);
@@ -301,7 +405,6 @@ export function handleCommands(bot: TelegramBot) {
     userState.get(userId)!.messageId = message.message_id;
   });
 
-
   bot.onText(/\/gobot/, async (msg) => {
     const userId = msg.from!.id;
     const chatId = msg.chat.id;
@@ -313,7 +416,7 @@ export function handleCommands(bot: TelegramBot) {
       return;
     }
     if (!userdata) {
-      await bot.sendMessage(chatId, '🚫 User not found in the database.');
+      await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
       return;
     }
     const isComplete = isUserStateComplete(userId);
@@ -323,8 +426,8 @@ export function handleCommands(bot: TelegramBot) {
     }
 
     // Validasi API key
-    if (!validateToken(userId)) {
-      await bot.sendMessage(chatId, '🚫 API KEY is not valid. please contact admin');
+    if (!await validateToken(userId)) {
+      await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
       return;
     }
     userContext.isRunning = true;
@@ -332,12 +435,11 @@ export function handleCommands(bot: TelegramBot) {
     await bot.sendMessage(chatId, 'Bot is running, please wait for the result, it may take a while, be patient! For stop the bot, please use /stopbot command');
   });
 
-
   bot.onText(/\/cinfo/, async (msg) => {
     const userId = msg.from!.id;
     const chatId = msg.chat.id;
-    if (validateToken(userId) === false) {
-      await bot.sendMessage(chatId, '🚫 API KEY is not valid. please contact admin');
+    if (await validateToken(userId) === false) {
+      await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
       return;
     }
     const userData = await getUserData(userId);
@@ -377,12 +479,11 @@ export function handleCommands(bot: TelegramBot) {
     });
   });
 
-
   bot.onText(/\/stopbot/, async (msg) => {
     const userId = msg.from!.id;
     const chatId = msg.chat.id;
-    if (validateToken(userId) === false) {
-      await bot.sendMessage(chatId, '🚫 API KEY is not valid. please contact admin');
+    if (await validateToken(userId) === false) {
+      await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
       return;
     }
 
@@ -529,14 +630,14 @@ export function handleCommands(bot: TelegramBot) {
     const userId = msg.from!.id;
     const chatId = msg.chat.id;
 
-    if (msg.text?.includes('firekey')) {
+    if (msg.text?.includes('firekey') || msg.text?.includes('dev')) {
       const userData = await getUserInfo(userId);
       if (!userData) {
-        await bot.sendMessage(chatId, '🚫 User not found in the database.');
+        await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
         return;
       }
       if (userData.api_key !== msg.text) {
-        await bot.sendMessage(chatId, `🚫 API KEY isn't valid. please contact admin`);
+        await bot.sendMessage(chatId, `🚫 Your API Key is not valid or not active yet! Please contact Developer`);
         return;
       }
       await bot.sendMessage(chatId, `✅ API KEY is valid. You can use the bot now!`);
@@ -659,6 +760,8 @@ export function handleCommands(bot: TelegramBot) {
   });
 }
 
+
+
 function buildFormTextCServiceData(data: CServiceData): string {
   return `<b>🛠️ Konfigurasi Service</b>
 
@@ -683,7 +786,6 @@ function buildFormTextCBuyData(data: CBuyData): string {
 `
 }
 
-
 function buildFormTextCSellData(data: CSellData): string {
   return `<b>🛠️ Konfigurasi Buy</b>
 
@@ -694,7 +796,6 @@ function buildFormTextCSellData(data: CSellData): string {
 💰 <b>TAKE PROFIT:</b> ${data.take_profit || '<i>belum diisi</i>'}
 `
 }
-
 
 function buildFormTextCRugData(data: CRugData): string {
   return `<b>🛠️ Konfigurasi Buy</b>
@@ -756,7 +857,6 @@ function buildFormButtonsCSellData(data: CSellData): TelegramBot.InlineKeyboardB
   ];
 }
 
-
 function buildFormButtonsCRugData(data: CRugData): TelegramBot.InlineKeyboardButton[][] {
   return [
     [
@@ -799,6 +899,7 @@ async function getUserData(userId: number): Promise<any> {
   })
   return data;
 }
+
 async function getCServiceData(userId: number): Promise<CServiceData> {
   return new Promise((resolve) => {
     db.get(
@@ -900,7 +1001,6 @@ function saveToDatabase(userId: number, table: string, data: any) {
   );
 }
 
-
 function saveUser(userId: number, data: any) {
   const keys = Object.keys(data);
   const placeholders = keys.map(() => '?').join(',');
@@ -931,12 +1031,16 @@ function saveUser(userId: number, data: any) {
   });
 }
 
-async function getUserInfo(userId: number): Promise<UserData> {
-  return new Promise((resolve) => {
+async function getUserInfo(userId: number): Promise<UserData | null> {
+  return new Promise((resolve, reject) => {
     db.get(
       'SELECT * FROM users WHERE user_id = ? AND status = 1',
       [userId],
       (err, row: UserData) => {
+        if (err) {
+          reject(err);
+          return;
+        }
         if (row) {
           resolve({
             user_id: row.user_id,
@@ -947,14 +1051,23 @@ async function getUserInfo(userId: number): Promise<UserData> {
             created_at: row.created_at,
             updated_at: row.updated_at,
           });
+        } else {
+          resolve(null); // Tidak ada hasil
         }
       }
     );
   });
 }
 
-function validateToken(userid: number): boolean {
-  const key = userKeyState.get(userid)?.api_key;
+async function validateToken(userId: number): Promise<boolean> {
+  const userData = await getUserInfo(userId);
+  const key = userKeyState.get(userId)?.api_key;
+  if (!userData) {
+    return false;
+  }
+  if (userData.api_key !== key) {
+    return false;
+  }
   if (!key) {
     return false;
   }
@@ -975,4 +1088,115 @@ function isUserStateComplete(userId: number): boolean {
     state.CSellData && isObjectFilled(state.CSellData, ['enabled', 'stop_loss', 'take_profit']) &&
     state.CRugData && isObjectFilled(state.CRugData, ['mode', 'mint_authority', 'freeze_authority', 'allow_insider_topholders', 'percentage_top_holders', 'total_lp_providers', 'total_market_liquidity', 'score', 'total_markets'])
   );
+}
+
+export async function toggleUserStatus(username: string): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    const updateQuery = `
+      UPDATE users
+      SET status = CASE WHEN status = 1 THEN 0 ELSE 1 END,
+          updated_at = ?
+      WHERE username = ?
+    `;
+
+    db.run(updateQuery, [getJakartaTime1month(), username], function (err) {
+      if (err) return reject(err);
+      if (this.changes === 0) return resolve(null); // username tidak ditemukan
+
+      const selectQuery = `SELECT status FROM users WHERE username = ?`;
+
+      db.get(selectQuery, [username], (err, row: { status: number } | undefined) => {
+        if (err) return reject(err);
+        resolve(row?.status ?? null);
+      });
+    });
+  });
+}
+
+
+async function getUserList(): Promise<UserData[] | null> {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM users',
+      (err, rows: UserData[]) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        if (rows.length > 0) {
+          resolve(rows);
+        } else {
+          resolve(null); // Tidak ada hasil
+        }
+      }
+    );
+  });
+}
+
+async function getUserbyUsername(username: string): Promise<UserData | null> {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT * FROM users WHERE username = ?',
+      [username],
+      (err, row: UserData) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        if (row) {
+          resolve({
+            user_id: row.user_id,
+            name: row.name,
+            username: row.username,
+            api_key: row.api_key,
+            status: row.status,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+          });
+        } else {
+          resolve(null); // Tidak ada hasil
+        }
+      }
+    );
+  });
+}
+
+export async function checkUsersUpdatedToday(): Promise<UserData[]> {
+  return new Promise((resolve, reject) => {
+    const today = getStartOfDayJakarta(); // Ambil tanggal hari ini
+    db.all(
+      'SELECT * FROM users WHERE updated_at < ? AND status = 1 AND user_id != ?',
+      [today, 732587267],
+      (err, rows: UserData[]) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(rows);
+      }
+    );
+  });
+}
+
+export async function toggleUserStatusFalse(username: string): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    const updateQuery = `
+      UPDATE users
+      SET status = 0,
+          updated_at = ?
+      WHERE username = ?
+    `;
+
+    db.run(updateQuery, [getJakartaTime1month(), username], function (err) {
+      if (err) return reject(err);
+      if (this.changes === 0) return resolve(null); // username tidak ditemukan
+
+      const selectQuery = `SELECT status FROM users WHERE username = ?`;
+
+      db.get(selectQuery, [username], (err, row: { status: number } | undefined) => {
+        if (err) return reject(err);
+        resolve(row?.status ?? null);
+      });
+    });
+  });
 }

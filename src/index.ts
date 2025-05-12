@@ -1,15 +1,17 @@
 import WebSocket from "ws"; // Node.js websocket library
 import { config } from "./config"; // Configuration parameters for our bot
 import { validateEnv } from "./utils/env-validator";
-import { WebSocketManager, ConnectionState, WebSocketRequest } from "./utils/managers/websocketManager";
+import { WebSocketManager, ConnectionState } from "./utils/managers/websocketManager";
 import { createSignatureHandler } from "./utils/handlers/signatureHandler";
 import { createTokenCheckManager } from "./utils/handlers/tokenHandler";
 import { buyToken } from "./utils/handlers/sniperooHandler";
 import { getRugCheckConfirmed } from "./utils/handlers/rugCheckHandler";
-import { playSound } from "./utils/notification";
-import { handleCommands, userState } from './bot/handlers';
+import { checkUsersUpdatedToday, handleCommands, toggleUserStatus, toggleUserStatusFalse } from './bot/handlers';
 import { UserContext } from "./utils/handlers/UserContext";
 import { TelegramManager } from "./utils/handlers/telegram";
+import moment from 'moment-timezone';
+import { getJakartaTime } from "./utils/handlers/helper";
+import cron from 'node-cron';
 
 // Regional Variables
 TelegramManager.init(config.telegram.token); // WAJIB dipanggil 1x saat startup
@@ -25,6 +27,8 @@ type SubscriptionLP = {
   program: string;
   instruction: string;
 };
+
+moment.tz.setDefault('Asia/Jakarta');
 
 // Sell Options
 
@@ -260,7 +264,7 @@ export async function continueProgram(userctx: UserContext): Promise<void> {
     } catch (error) {
       console.error("💥 Error processing message:", {
         error: error instanceof Error ? error.message : "Unknown error",
-        timestamp: new Date().toISOString(),
+        timestamp: getJakartaTime(),
       });
     }
   });
@@ -303,6 +307,26 @@ async function main(): Promise<void> {
   if (env.TELEGRAM_BOT) {
     handleCommands(bot); // <- ini yang menangani semua /cservice, /cbuy, dll
   }
+
+  cron.schedule('39 16 * * *', async () => {
+    console.log("Checking for expired users...");
+    const users = await checkUsersUpdatedToday();
+    if (users.length > 0) {
+      users.forEach(async (user) => {
+        await toggleUserStatusFalse(user.username);
+        bot.sendMessage(user.user_id, `❌ Your subscription has expired. Please contact <a href="https://t.me/lutfiharidha"><b>DEVELOPER</b></a> for more information.`, {
+          parse_mode: 'HTML',
+        });
+      });
+      bot.sendMessage(732587267, `🔔 Reminder Expired User
+
+${users.map((user) => `<b>@${user.username}</b>\n`)}`,
+        { parse_mode: 'HTML' });
+    } else {
+      console.log("No expired users found.");
+    }
+  });
+
 }
 
 // main().catch(console.error);
