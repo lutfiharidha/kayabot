@@ -4,6 +4,9 @@ import { config } from "../../config";
 import { RugResponseExtended, NewTokenRecord } from "../../types";
 import { insertNewToken, selectTokenByNameAndCreator } from "../../tracker/db";
 import { UserContext } from "./UserContext";
+import { TelegramManager } from "./telegram";
+import TelegramBot from "node-telegram-bot-api";
+
 
 // Load environment variables from the .env file
 dotenv.config();
@@ -13,7 +16,7 @@ dotenv.config();
  * @param tokenMint The token's mint address
  * @returns Promise<boolean> indicating if the token passes all checks
  */
-export async function getRugCheckConfirmed(userCtx: UserContext, tokenMint: string): Promise<boolean> {
+export async function getRugCheckConfirmed(userCtx: UserContext, bot: TelegramBot, tokenMint: string): Promise<boolean> {
   try {
     const rugResponse = await axios.get<RugResponseExtended>(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, {
       timeout: config.axios.get_timeout,
@@ -156,21 +159,27 @@ export async function getRugCheckConfirmed(userCtx: UserContext, tokenMint: stri
       creator: tokenCreator,
     };
 
-    try {
-      await insertNewToken(userCtx.userID, newToken);
-    } catch (err) {
-      if (rugCheckSettings.block_returning_token_names || rugCheckSettings.block_returning_token_creators) {
-        console.error("⛔ Unable to store new token for tracking duplicate tokens:", err);
-      }
-      // Continue with other checks even if this one fails
-    }
+    // try {
+    //   await insertNewToken(userCtx.userID, newToken);
+    // } catch (err) {
+    //   if (rugCheckSettings.block_returning_token_names || rugCheckSettings.block_returning_token_creators) {
+    //     console.error("⛔ Unable to store new token for tracking duplicate tokens:", err);
+    //   }
+    //   // Continue with other checks even if this one fails
+    // }
 
     // Validate all conditions
-    for (const condition of conditions) {
-      if (condition.check) {
-        console.log(condition.message);
-        return false;
-      }
+    const failedConditions = conditions.filter((condition) => condition.check);
+    if (failedConditions.length > 0) {
+      bot.sendMessage(userCtx.userID, `🧪 [Rug Check Handler] Token https://rugcheck.xyz/tokens/${tokenMint}:
+Rug Conditions: 
+${failedConditions.map((condition) => `${condition.message}\n`).join('')}`, {
+        parse_mode: "HTML",
+      });
+    }
+
+    if (failedConditions.length > 0) {
+      return false; // Token is not safe
     }
 
     return true;
@@ -178,4 +187,59 @@ export async function getRugCheckConfirmed(userCtx: UserContext, tokenMint: stri
     console.error(`Error in rug check for token ${tokenMint}:`, error);
     return false; // Consider token unsafe if there's an error
   }
+}
+
+
+export async function getMcap(userCtx: UserContext, bot: TelegramBot, tokenMint: string): Promise<boolean> {
+  try {
+    const rugResponse = await axios.get<RugResponseExtended>(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, {
+      timeout: config.axios.get_timeout,
+    });
+
+    const priceResponse = await axios.get(`https://data.fluxbeam.xyz/tokens/${tokenMint}/price`, {
+      timeout: config.axios.get_timeout,
+    });
+
+
+    if (!rugResponse.data || !priceResponse.data) return false;
+
+    // Extract information from the token report
+    const tokenReport: RugResponseExtended = rugResponse.data;
+    const tokenMutable = tokenReport.tokenMeta.mutable;
+    const supply = tokenReport.token.supply / Math.pow(10, tokenReport.token.decimals);
+    const price = priceResponse.data;
+    const mcap = supply * Number(price);
+    if (mcap >= 100000) {
+      bot.sendMessage(userCtx.userID, `Market Cap too high: ${formatMcap(mcap)}`);
+      return false;
+    }
+    if (tokenMutable !== false) {
+      bot.sendMessage(userCtx.userID, `⛔ Token metadata can be changed by the owner`);
+      return false;
+    }
+    if (tokenReport.topHolders.some((holder) => holder.pct > userCtx.percentageTopHolders)) {
+      bot.sendMessage(userCtx.userID, `⛔ An individual top holder cannot hold more than ${userCtx.percentageTopHolders}% of the total supply`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response?.status === 404) {
+        return false; // atau nilai default seperti 0
+      } else {
+        console.error(`Axios error for token ${tokenMint}:`, error.message);
+      }
+    } else {
+      console.error(`Unexpected error for token ${tokenMint}:`, error);
+    }
+    return false; // Consider token unsafe if there's an error
+  }
+}
+
+
+function formatMcap(mcap: number): string {
+  if (mcap >= 1_000_000_000) return `${(mcap / 1_000_000_000).toFixed(1)}B`;
+  if (mcap >= 1_000_000) return `${(mcap / 1_000_000).toFixed(1)}M`;
+  if (mcap >= 1_000) return `${(mcap / 1_000).toFixed(1)}K`;
+  return mcap.toFixed(2);
 }

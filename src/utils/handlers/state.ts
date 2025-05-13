@@ -1,7 +1,11 @@
+import { WebSocketManager } from "../managers/websocketManager";
+import { UserContext } from "./UserContext";
+
 // state.ts
 const runningStatus: Map<number, boolean> = new Map();
 const activeTransactions: Map<number, number> = new Map();
 const currentMint: Map<number, string> = new Map();
+export const wsManagers: Map<number, WebSocketManager> = new Map();
 
 export function setRunning(userId: number, value: boolean) {
   runningStatus.set(userId, value);

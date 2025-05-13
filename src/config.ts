@@ -15,7 +15,7 @@ export const config = {
     program: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
     instruction: "Program log: initialize2: InitializeInstruction2",
   },
-  concurrent_transactions: 1, // Number of simultaneous transactions
+  concurrent_transactions: 2, // Number of simultaneous transactions
   wsol_pc_mint: "So11111111111111111111111111111111111111112",
   db: {
     pathname: "src/db/sniper.db", // Sqlite Database location

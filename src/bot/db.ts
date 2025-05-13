@@ -46,6 +46,12 @@ db.serialize(() => {
     created_at TEXT,
     updated_at TEXT
   )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS users_active (
+    user_id INTEGER PRIMARY KEY,
+    status BOOLEAN,
+    last_active TEXT
+  )`);
 });
 
 export default db;

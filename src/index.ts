@@ -5,13 +5,14 @@ import { WebSocketManager, ConnectionState } from "./utils/managers/websocketMan
 import { createSignatureHandler } from "./utils/handlers/signatureHandler";
 import { createTokenCheckManager } from "./utils/handlers/tokenHandler";
 import { buyToken } from "./utils/handlers/sniperooHandler";
-import { getRugCheckConfirmed } from "./utils/handlers/rugCheckHandler";
+import { getMcap, getRugCheckConfirmed } from "./utils/handlers/rugCheckHandler";
 import { checkUsersUpdatedToday, handleCommands, toggleUserStatus, toggleUserStatusFalse } from './bot/handlers';
 import { UserContext } from "./utils/handlers/UserContext";
 import { TelegramManager } from "./utils/handlers/telegram";
 import moment from 'moment-timezone';
 import { getJakartaTime } from "./utils/handlers/helper";
 import cron from 'node-cron';
+import { wsManagers } from "./utils/handlers/state";
 
 // Regional Variables
 TelegramManager.init(config.telegram.token); // WAJIB dipanggil 1x saat startup
@@ -50,7 +51,6 @@ async function processTransaction(userCtx: UserContext, signature: string): Prom
 🔎 [Process Transaction] Looking for new Liquidity Pools again`);
     return;
   }
-
   /**
    * Check if the mint address is the same as the current one to prevent failed logs from spam buying
    */
@@ -66,12 +66,19 @@ async function processTransaction(userCtx: UserContext, signature: string): Prom
    * Perform checks based on selected level of rug check
    */
   const CHECK_MODE = userCtx.mode
-  if (CHECK_MODE === "snipe") {
-    bot.sendMessage(userCtx.userID, `
+  bot.sendMessage(userCtx.userID, `
 🔍 [Process Transaction] Performing ${CHECK_MODE} check
 👽 GMGN: https://gmgn.ai/sol/token/${returnedMint}`);
+  if (CHECK_MODE === "snipe") {
     const tokenCheck = createTokenCheckManager(userCtx);
     const tokenAuthorityStatus = await tokenCheck.getTokenAuthorities(returnedMint);
+    const mcap = await getMcap(userCtx, bot, returnedMint);
+    if (!mcap) {
+      bot.sendMessage(userCtx.userID, `
+❌ [Process Transaction] Token not swapped. Market Cap check failed.
+🔎 [Process Transaction] Looking for new Liquidity Pools again`);
+      return;
+    }
     if (!tokenAuthorityStatus.isSecure) {
       /**
        * Token is not secure, check if we should skip based on preferences
@@ -102,7 +109,7 @@ async function processTransaction(userCtx: UserContext, signature: string): Prom
       return;
     }
     // Check rug check
-    const isRugCheckPassed = await getRugCheckConfirmed(userCtx, returnedMint);
+    const isRugCheckPassed = await getRugCheckConfirmed(userCtx, bot, returnedMint);
     if (!isRugCheckPassed) {
       bot.sendMessage(userCtx.userID, `
 ❌ [Process Transaction] Token not swapped. Rug check failed.
@@ -137,7 +144,9 @@ async function processTransaction(userCtx: UserContext, signature: string): Prom
 <b>Token Amount:</b> ${BUY_AMOUNT} SOL
 <b>Sell Enabled:</b> ${SELL_ENABLED}
 <b>Stop Loss:</b> ${SELL_STOP_LOSS}
-<b>Take Profit:</b> ${SELL_TAKE_PROFIT}`);
+<b>Take Profit:</b> ${SELL_TAKE_PROFIT}`, {
+      parse_mode: 'HTML',
+    });
     bot.sendMessage(userCtx.userID, "✅ [Process Transaction] Token swapped successfully! ");
   }
 
@@ -189,6 +198,8 @@ export async function continueProgram(userctx: UserContext): Promise<void> {
     maxRetries: Infinity,
     debug: true,
   });
+
+  wsManagers.set(userctx.userID, wsManager);
 
   // Set up event handlers
   wsManager.on("open", () => {
@@ -286,16 +297,16 @@ export async function continueProgram(userctx: UserContext): Promise<void> {
 
   // Handle application shutdown
   process.on("SIGINT", () => {
-    bot.sendMessage('732587267', `Bot stopped`);
+    bot.sendMessage(732587267, `Bot stopped`);
     console.log("\n🛑 Shutting down...");
-    wsManager.disconnect();
+    for (const ws of wsManagers.values()) ws.disconnect();
     process.exit(0);
   });
 
   process.on("SIGTERM", () => {
-    bot.sendMessage('732587267', `Bot stopped`);
+    bot.sendMessage(732587267, `Bot stopped`);
     console.log("\n🛑 Shutting down...");
-    wsManager.disconnect();
+    for (const ws of wsManagers.values()) ws.disconnect();
     process.exit(0);
   });
 }
@@ -320,7 +331,7 @@ async function main(): Promise<void> {
       });
       bot.sendMessage(732587267, `🔔 Reminder Expired User
 
-${users.map((user) => `<b>@${user.username}</b>\n`)}`,
+${users.map((user) => `<b>@${user.username}</b>\n`).join('')}`,
         { parse_mode: 'HTML' });
     } else {
       console.log("No expired users found.");
@@ -334,7 +345,7 @@ ${users.map((user) => `<b>@${user.username}</b>\n`)}`,
 
 // Start the application
 main().catch((err) => {
-  bot.sendMessage('732587267', `Bot error: ${err}`);
+  bot.sendMessage(732587267, `Bot error: ${err}`);
   console.error("Fatal error:", err);
   process.exit(1);
 });

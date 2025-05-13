@@ -2,7 +2,9 @@ import TelegramBot from 'node-telegram-bot-api';
 import db from './db';
 import { continueProgram } from "../index";
 import { UserContext } from "../utils/handlers/UserContext";
-import { getJakartaTime, getJakartaTime1month, getJakartaTime1year, getStartOfDayJakarta } from "../utils/handlers/helper";
+import { getJakartaTime, getJakartaTime1month, getJakartaTime1year, getStartOfDayJakarta, mapFieldName } from "../utils/handlers/helper";
+import { getFeeRecommendation } from '../utils/handlers/jitoHandler';
+import { wsManagers } from '../utils/handlers/state';
 
 export const userKeyState = new Map<number, {
   api_key: string;
@@ -30,6 +32,18 @@ export type UserData = {
   status: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type UserActive = {
+  user_id: number;
+  status: boolean;
+  last_active: string;
+};
+
+export type UserActiveDisplay = {
+  username: string;
+  status: boolean;
+  last_active: string;
 };
 
 export type CBuyData = {
@@ -104,6 +118,41 @@ function getRandomChar(): string {
 }
 
 export function handleCommands(bot: TelegramBot) {
+
+  bot.onText(/\/feedback(?:\s+(.+))?/, async () => {
+    bot.sendMessage(732587267, `Any feedback? please send it to @lutfiharidha`)
+  });
+
+  bot.onText(/\/auser/, async (msg) => {
+    const chatId = msg.chat.id;
+    const senderId = msg.from!.id;
+
+    if (senderId !== 732587267) {
+      await bot.sendMessage(chatId, "🚫 Are you sure you're an ADMIN?!");
+      await bot.sendMessage(732587267, `Sir, <b>@${msg.chat.username}</b> is trying to access the admin command! 
+
+Command: <b>${msg.text}</b>`, {
+        parse_mode: 'HTML',
+      });
+      return;
+    }
+
+    try {
+      const user = await getUserActive();
+      if (user !== null) {
+        await bot.sendMessage(chatId, `Online User
+${user.map((u) => `\n<b>${u.status ? "🟢" : "🔴"} @${u.username} ${u.last_active}</b>`).join("\n")}`, {
+          parse_mode: 'HTML',
+        });
+      } else {
+        await bot.sendMessage(chatId, `🚫 There's no user bos`);
+      }
+    } catch (err) {
+      await bot.sendMessage(chatId, `🚫 Error: ${err}`);
+    }
+
+  });
+
   bot.onText(/\/euser(?:\s+(.+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
     const senderId = msg.from!.id;
@@ -143,7 +192,7 @@ Command: <b>${msg.text}</b>`, {
 
     if (senderId !== 732587267) {
       await bot.sendMessage(chatId, "🚫 Are you sure you're an ADMIN?!");
-      await bot.sendMessage(732587267, `Sir, <a href="https://t.me/${msg.chat.username}"><b>${msg.chat.username}</b></a> is trying to access the admin command! 
+      await bot.sendMessage(732587267, `Sir, <b>@${msg.chat.username}</b> is trying to access the admin command! 
 
 Command: <b>${msg.text}</b>`, {
         parse_mode: 'HTML',
@@ -196,6 +245,7 @@ Command: <b>${msg.text}</b>`, {
       if (user !== null) {
         await bot.sendMessage(chatId, `<b>@${user.username} (${user.user_id})</b>
 Status: ${user.status ? "Active" : "Not Active"}
+API Key: ${user.api_key}
 Created At: ${user.created_at}
 Updated At: ${user.updated_at}
 `, { parse_mode: 'HTML' });
@@ -220,14 +270,13 @@ Updated At: ${user.updated_at}
     };
     saveUser(msg.from!.id, data);
     const message = await bot.sendMessage(msg.chat.id, `
-      <b>👋 Hello ${data.username}, Welcome!</b>
+<b>👋 Hello ${data.username}, Welcome!</b>
 
-      <b>Please Request your api key to the <a href="https://t.me/lutfiharidha">DEVELOPER</a></b>
+<b>Please Request your api key to the <a href="https://t.me/lutfiharidha">DEVELOPER</a></b>
 
-      <b>TOOLS:</b>
-      <b><a href="https://www.helius.dev/">Helius</a> or <a href="https://www.quicknode.com/">Quicknode</a></b>
-      <b><a href="https://www.sniperoo.app/signup?ref=85CMS4V4">Sniperoo</a></b>
-      `, {
+<b>TOOLS:</b>
+<b><a href="https://www.helius.dev/">Helius</a> or <a href="https://www.quicknode.com/">Quicknode</a></b>
+<b><a href="https://www.sniperoo.app/signup?ref=85CMS4V4">Sniperoo</a></b>`, {
       parse_mode: 'HTML'
     });
   });
@@ -432,6 +481,7 @@ Updated At: ${user.updated_at}
     }
     userContext.isRunning = true;
     await continueProgram(userContext);
+    await upsertUserActive(chatId, true)
     await bot.sendMessage(chatId, 'Bot is running, please wait for the result, it may take a while, be patient! For stop the bot, please use /stopbot command');
   });
 
@@ -446,34 +496,34 @@ Updated At: ${user.updated_at}
 
     const message = await bot.sendMessage(msg.chat.id, `
 <b>🛠️ Service Config (/cservice)</b>
-🔗 <b>RPC URL:</b> ${userData?.cservice.rpc_url || '<i>belum diisi</i>'}
-🌐 <b>WS URL:</b> ${userData?.cservice.ws_url || '<i>belum diisi</i>'}
-🔑 <b>API Key:</b> ${userData?.cservice.api_key || '<i>belum diisi</i>'}
-💼 <b>Wallet:</b> ${userData?.cservice.wallet || '<i>belum diisi</i>'}
+🔗 <b>RPC URL:</b> ${userData?.cservice.rpc_url || '<i>Not Filled</i>'}
+🌐 <b>WS URL:</b> ${userData?.cservice.ws_url || '<i>Not Filled</i>'}
+🔑 <b>API Key:</b> ${userData?.cservice.api_key || '<i>Not Filled</i>'}
+💼 <b>Wallet:</b> ${userData?.cservice.wallet || '<i>Not Filled</i>'}
 🏦 <b>Pumpfun:</b> ${userData?.cservice.pumpfun === 1 ? '✅' : '❌'}
 🏦 <b>Raydium:</b> ${userData?.cservice.raydium === 1 ? '✅' : '❌'}
 
 
 <b>🛠️ Buy Config (/cbuy)</b>
-🪙 <b>AMOUNT:</b> ${userData?.cbuy.amount || '<i>belum diisi</i>'}
+🪙 <b>AMOUNT:</b> ${userData?.cbuy.amount || '<i>Not Filled</i>'}
 
 
 <b>🛠️ Sell Config (/csell)</b>
 🤖 <b>AUTO SELL:</b> ${userData?.csell.enabled === 1 ? '✅' : '❌'}
-📉 <b>STOP LOSS:</b> ${userData?.csell.stop_loss || '<i>belum diisi</i>'}
-💰 <b>TAKE PROFIT:</b> ${userData?.csell.take_profit || '<i>belum diisi</i>'}
+📉 <b>STOP LOSS:</b> ${userData?.csell.stop_loss || '<i>Not Filled</i>'}
+💰 <b>TAKE PROFIT:</b> ${userData?.csell.take_profit || '<i>Not Filled</i>'}
 
 
 <b>🛠️ Rug Config (/crug)</b>
-⚖️ <b>STRICT MODE:</b>${userData?.crug.mode || '<i>belum diisi</i>'}
+⚖️ <b>STRICT MODE:</b>${userData?.crug.mode || '<i>Not Filled</i>'}
 ⚒️ <b>MINT AUTHORITY:</b> ${userData?.crug.mint_authority === 1 ? '✅' : '❌'}
 ❄️ <b>FREEZE AUTHORITY:</b> ${userData?.crug.freeze_authority === 1 ? '✅' : '❌'}
 👑 <b>ALLOW INSIDER TOP HOLDERS:</b> ${userData?.crug.allow_insider_topholders === 1 ? '✅' : '❌'}
-🏅 <b>TOP HOLDERS:</b> ${userData?.crug.percentage_top_holders || '<i>belum diisi</i>'}
-🌍 <b>LP PROVIDERS:</b> ${userData?.crug.total_lp_providers || '<i>belum diisi</i>'}
-💰 <b>MARKET LIQUIDITY:</b> ${userData?.crug.total_market_liquidity || '<i>belum diisi</i>'}
-📈 <b>MARKETS:</b> ${userData?.crug.total_markets || '<i>belum diisi</i>'}
-🏆 <b>SCORE:</b> ${userData?.crug.score || '<i>belum diisi</i>'}
+🏅 <b>MAX SUPPLY PER HOLDER:</b> ${userData?.crug.percentage_top_holders || '<i>Not Filled</i>'}
+🌍 <b>LP PROVIDERS:</b> ${userData?.crug.total_lp_providers || '<i>Not Filled</i>'}
+💰 <b>MARKET LIQUIDITY:</b> ${userData?.crug.total_market_liquidity || '<i>Not Filled</i>'}
+📈 <b>MARKETS:</b> ${userData?.crug.total_markets || '<i>Not Filled</i>'}
+🏆 <b>SCORE:</b> ${userData?.crug.score || '<i>Not Filled</i>'}
       `, {
       parse_mode: 'HTML'
     });
@@ -486,10 +536,43 @@ Updated At: ${user.updated_at}
       await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
       return;
     }
+    await validateDataUser(userId);
 
     const userContext = new UserContext(userId);
+    const wsManager = wsManagers.get(userId);
+
     userContext.isRunning = false;
+    if (wsManager) {
+      wsManager.disconnect();
+      wsManagers.delete(userId);
+    }
+    await upsertUserActive(chatId, false)
     await bot.sendMessage(chatId, '🛑 Bot is stopped, you can start it again with /gobot command');
+  });
+
+  bot.onText(/\/rfee/, async (msg) => {
+    const userId = msg.from!.id;
+    const chatId = msg.chat.id;
+    if (await validateToken(userId) === false) {
+      await bot.sendMessage(chatId, '🚫 Your API Key is not valid or not active yet! Please contact Developer');
+      return;
+    }
+    await validateDataUser(userId);
+    const userContext = new UserContext(userId);
+
+    const fees = await getFeeRecommendation(userContext)
+
+    bot.sendMessage(userId, `Rekomendasi Fees:
+
+<b>Buy:</b> ${userContext.buyAmount} SOL
+<b>TP:</b> ${userContext.takeProfit}% 
+
+${fees.map(r => `<b>${r.tier}% Success</b>
+  Fee Per Tx: ${r.feePerTx.toFixed(6)}
+  Total Fee: ${r.totalFee.toFixed(6)}
+  Net Profit: ${r.netProfit.toFixed(6)} 
+  Profitable: ${r.isProfitable ? '✅' : '❌'}`).join("\n\n")}`,
+      { parse_mode: "HTML" });
   });
 
   bot.on('callback_query', async (query) => {
@@ -527,7 +610,7 @@ Updated At: ${user.updated_at}
 
       const field = action.replace('edit_cservice_', '') as keyof CServiceData;
       getServiceState.editingFieldService = field;
-      await bot.sendMessage(chatId, `📝 Masukkan nilai untuk <b>${field}</b>:`, {
+      await bot.sendMessage(chatId, `📝 Enter the value for <b>${mapFieldName(field)}</b>:`, {
         parse_mode: 'HTML',
         reply_markup: { force_reply: true }
       });
@@ -538,7 +621,7 @@ Updated At: ${user.updated_at}
       if (!getBuyState) return;
       const field = action.replace('edit_cbuy_', '') as keyof CBuyData;
       getBuyState.editingFieldBuy = field;
-      await bot.sendMessage(chatId, `📝 Masukkan nilai untuk <b>${field}</b>:`, {
+      await bot.sendMessage(chatId, `📝 Enter the value for <b>${mapFieldName(field)}</b>:`, {
         parse_mode: 'HTML',
         reply_markup: { force_reply: true }
       });
@@ -574,7 +657,7 @@ Updated At: ${user.updated_at}
 
       const field = action.replace('edit_csell_', '') as keyof CSellData;
       getSellState.editingFieldSell = field;
-      await bot.sendMessage(chatId, `📝 Masukkan nilai untuk <b>${field}</b>:`, {
+      await bot.sendMessage(chatId, `📝 Enter the value for <b>${mapFieldName(field)}</b>:`, {
         parse_mode: 'HTML',
         reply_markup: { force_reply: true }
       });
@@ -617,7 +700,7 @@ Updated At: ${user.updated_at}
 
       const field = action.replace('edit_crug_', '') as keyof CRugData;
       getRugState.editingFieldRug = field;
-      await bot.sendMessage(chatId, `📝 Masukkan nilai untuk <b>${field}</b>:`, {
+      await bot.sendMessage(chatId, `📝 Enter the value for <b>${mapFieldName(field)}</b>:`, {
         parse_mode: 'HTML',
         reply_markup: { force_reply: true }
       });
@@ -763,15 +846,15 @@ Updated At: ${user.updated_at}
 
 
 function buildFormTextCServiceData(data: CServiceData): string {
-  return `<b>🛠️ Konfigurasi Service</b>
+  return `<b>🛠️ Service Configuration</b>
 
-🔗 <b>RPC URL:</b> ${data.rpc_url || '<i>belum diisi</i>'}
+🔗 <b>RPC URL:</b> ${data.rpc_url || '<i>Not Filled</i>'}
 
-🌐 <b>WS URL:</b> ${data.ws_url || '<i>belum diisi</i>'}
+🌐 <b>WS URL:</b> ${data.ws_url || '<i>Not Filled</i>'}
 
-🔑 <b>API Key:</b> ${data.api_key || '<i>belum diisi</i>'}
+🔑 <b>API Key:</b> ${data.api_key || '<i>Not Filled</i>'}
 
-💼 <b>Wallet:</b> ${data.wallet || '<i>belum diisi</i>'}
+💼 <b>Wallet:</b> ${data.wallet || '<i>Not Filled</i>'}
 
 🏦 <b>Pumpfun:</b> ${data.pumpfun === 1 ? 'ACTIVE' : 'NOT ACTIVE'}
 
@@ -780,27 +863,27 @@ function buildFormTextCServiceData(data: CServiceData): string {
 }
 
 function buildFormTextCBuyData(data: CBuyData): string {
-  return `<b>🛠️ Konfigurasi Buy</b>
+  return `<b>🛠️ Buy Configuration</b>
 
-🪙 <b>AMOUNT:</b> ${data.amount || '<i>belum diisi</i>'}
+🪙 <b>AMOUNT:</b> ${data.amount || '<i>Not Filled</i>'}
 `
 }
 
 function buildFormTextCSellData(data: CSellData): string {
-  return `<b>🛠️ Konfigurasi Buy</b>
+  return `<b>🛠️ Sell Configuration</b>
 
 🤖 <b>AUTO SELL:</b> ${data.enabled === 1 ? 'ACTIVE' : 'NOT ACTIVE'}
 
-📉 <b>STOP LOSS:</b> ${data.stop_loss || '<i>belum diisi</i>'}
+📉 <b>STOP LOSS:</b> ${data.stop_loss || '<i>Not Filled</i>'}
 
-💰 <b>TAKE PROFIT:</b> ${data.take_profit || '<i>belum diisi</i>'}
+💰 <b>TAKE PROFIT:</b> ${data.take_profit || '<i>Not Filled</i>'}
 `
 }
 
 function buildFormTextCRugData(data: CRugData): string {
-  return `<b>🛠️ Konfigurasi Buy</b>
+  return `<b>🛠️ Rugcheck Configuration</b>
 
-⚖️ <b>STRICT MODE:</b>${data.mode || '<i>belum diisi</i>'}
+⚖️ <b>STRICT MODE:</b>${data.mode || '<i>Not Filled</i>'}
 
 ⚒️ <b>MINT AUTHORITY:</b> ${data.mint_authority === 1 ? 'ACTIVE' : 'NOT ACTIVE'}
 
@@ -808,15 +891,15 @@ function buildFormTextCRugData(data: CRugData): string {
 
 👑 <b>ALLOW INSIDER TOP HOLDERS:</b> ${data.allow_insider_topholders === 1 ? 'ACTIVE' : 'NOT ACTIVE'}
 
-🏅 <b>TOP HOLDERS:</b> ${data.percentage_top_holders || '<i>belum diisi</i>'}
+🏅 <b>MAX SUPPLY PER HOLDER:</b> ${data.percentage_top_holders || '<i>Not Filled</i>'}
 
-🌍 <b>LP PROVIDERS:</b> ${data.total_lp_providers || '<i>belum diisi</i>'}
+🌍 <b>LP PROVIDERS:</b> ${data.total_lp_providers || '<i>Not Filled</i>'}
 
-💧 <b>MARKET LIQUIDITY:</b> ${data.total_market_liquidity || '<i>belum diisi</i>'}
+💧 <b>MARKET LIQUIDITY:</b> ${data.total_market_liquidity || '<i>Not Filled</i>'}
 
-📊 <b>MARKET:</b> ${data.total_markets || '<i>belum diisi</i>'}
+📊 <b>MARKET:</b> ${data.total_markets || '<i>Not Filled</i>'}
 
-💯 <b>SCORE:</b> ${data.score || '<i>belum diisi</i>'}
+💯 <b>SCORE:</b> ${data.score || '<i>Not Filled</i>'}
 `
 }
 
@@ -870,7 +953,7 @@ function buildFormButtonsCRugData(data: CRugData): TelegramBot.InlineKeyboardBut
     ],
     [
       { text: `${data.allow_insider_topholders ? '✅' : '❌'} Insider Top Holders`, callback_data: 'edit_crug_toggle_allow_insider_topholders' },
-      { text: '✏️ Top Holders', callback_data: 'edit_crug_percentage_top_holders' }
+      { text: '✏️ MAX SUPPLY PER HOLDER', callback_data: 'edit_crug_percentage_top_holders' }
     ],
     [
       { text: '✏️ LP Providers', callback_data: 'edit_crug_total_lp_providers' },
@@ -1199,4 +1282,50 @@ export async function toggleUserStatusFalse(username: string): Promise<number | 
       });
     });
   });
+}
+
+
+async function validateDataUser(userId: number) {
+  let state = userState.get(userId);
+
+  if (!state) {
+    await getUserData(userId)
+  }
+}
+
+async function getUserActive(): Promise<UserActiveDisplay[] | null> {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT u.username, ua.status, ua.last_active
+       FROM users_active ua
+       JOIN users u ON ua.user_id = u.user_id`,
+      (err, rows: UserActiveDisplay[]) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        if (rows.length > 0) {
+          resolve(rows);
+        } else {
+          resolve(null);
+        }
+      }
+    );
+  });
+}
+
+async function upsertUserActive(user_id: number, isOnline: boolean): Promise<void> {
+  const now = getJakartaTime();
+
+  db.run(
+    `INSERT INTO users_active (user_id, status, last_active)
+     VALUES (?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       status = excluded.status,
+       last_active = excluded.last_active`,
+    [user_id, isOnline, now],
+    (err) => {
+      if (err) console.error('Upsert error:', err);
+    }
+  );
 }
